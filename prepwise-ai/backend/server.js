@@ -28,16 +28,24 @@ app.post("/api/evaluate", async (req, res) => {
       {
         model: "llama-3.3-70b-versatile",
         messages: [
-          {
-            role: "system",
-            content:
-              "You are an interview evaluator. Give score (1-10), strengths, weaknesses, and improvements."
-          },
-          {
-            role: "user",
-            content: `Question: ${question}\nAnswer: ${answer}`
-          }
-        ]
+  {
+    role: "system",
+    content: `You are an expert interview evaluator.
+
+Return response ONLY in this JSON format:
+
+{
+  "score": number (out of 10),
+  "strengths": [array of points],
+  "weaknesses": [array of points],
+  "improvements": [array of points]
+}`
+  },
+  {
+    role: "user",
+    content: `Question: ${question}\nAnswer: ${answer}`
+  }
+]
       },
       {
         headers: {
@@ -49,9 +57,24 @@ app.post("/api/evaluate", async (req, res) => {
 
     console.log("AI response:", response.data);
 
-    const feedback = response.data.choices[0].message.content;
+    const raw = response.data.choices[0].message.content;
 
-    res.json({ feedback });
+let parsed;
+
+try {
+  parsed = JSON.parse(raw);
+} catch (err) {
+  parsed = {
+    score: 0,
+    strengths: [],
+    weaknesses: [],
+    improvements: ["Failed to parse AI response"]
+  };
+}
+
+res.json(parsed);
+
+    // res.json({ feedback });
 
   } catch (error) {
     console.error("ERROR DETAILS:");
