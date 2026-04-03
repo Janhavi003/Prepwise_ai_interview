@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import axios from "axios";
+import { createClient } from "@supabase/supabase-js";
 
 dotenv.config();
 
@@ -11,41 +12,48 @@ app.use(express.json());
 
 const PORT = 5000;
 
-// Test route
+// ✅ Supabase setup
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
+
+// ✅ Health check
 app.get("/", (req, res) => {
   res.send("Backend running 🚀");
 });
 
-// AI evaluation route
+// ✅ AI Evaluation Route
 app.post("/api/evaluate", async (req, res) => {
-  const { answer, question } = req.body;
+  const { question, answer } = req.body;
 
   console.log("Incoming request:", { question, answer });
 
   try {
+    // 🔥 Call Groq API
     const response = await axios.post(
       "https://api.groq.com/openai/v1/chat/completions",
       {
         model: "llama-3.3-70b-versatile",
         messages: [
-  {
-    role: "system",
-    content: `You are an expert interview evaluator.
+          {
+            role: "system",
+            content: `You are an expert interview evaluator.
 
 Return response ONLY in this JSON format:
 
 {
   "score": number (out of 10),
   "strengths": [array of points],
-  "weaknesses": [array of points],
+  "weakness": [array of points],
   "improvements": [array of points]
 }`
-  },
-  {
-    role: "user",
-    content: `Question: ${question}\nAnswer: ${answer}`
-  }
-]
+          },
+          {
+            role: "user",
+            content: `Question: ${question}\nAnswer: ${answer}`
+          }
+        ]
       },
       {
         headers: {
@@ -55,38 +63,57 @@ Return response ONLY in this JSON format:
       }
     );
 
-    console.log("AI response:", response.data);
-
+    // ✅ Extract AI response
     const raw = response.data.choices[0].message.content;
 
-let parsed;
+    console.log("AI raw response:", raw);
 
-try {
-  parsed = JSON.parse(raw);
-} catch (err) {
-  parsed = {
-    score: 0,
-    strengths: [],
-    weaknesses: [],
-    improvements: ["Failed to parse AI response"]
-  };
-}
+    // ✅ Parse JSON safely
+    let parsed;
 
-res.json(parsed);
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      console.error("JSON parse failed");
 
-    // res.json({ feedback });
+      parsed = {
+        score: 0,
+        strengths: [],
+        weakness: [],
+        improvements: ["Failed to parse AI response"]
+      };
+    }
+
+    // ✅ Save to Supabase
+    const { error } = await supabase.from("interviews").insert([
+      {
+        question,
+        answer,
+        score: parsed.score,
+        strengths: parsed.strengths,
+        weakness: parsed.weakness,
+        improvements: parsed.improvements
+      }
+    ]);
+
+    if (error) {
+      console.error("Supabase error:", error);
+    }
+
+    // ✅ Send response to frontend
+    res.json(parsed);
 
   } catch (error) {
     console.error("ERROR DETAILS:");
     console.error(error.response?.data || error.message);
 
     res.status(500).json({
-      error: "AI evaluation failed",
-      details: error.response?.data || error.message
+      error: "AI evaluation failed"
     });
   }
 });
 
+// ✅ Start server
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
