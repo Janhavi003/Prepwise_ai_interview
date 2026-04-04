@@ -47,7 +47,7 @@ Return response ONLY in this JSON format:
 {
   "score": number (out of 10),
   "strengths": [array of points],
-  "weaknesses": [array of points],
+  "weakness": [array of points],
   "improvements": [array of points]
 }`
           },
@@ -80,13 +80,13 @@ Return response ONLY in this JSON format:
       parsed = {
         score: 0,
         strengths: [],
-        weaknesses: [],
+        weakness: [],
         improvements: ["Failed to parse AI response"]
       };
     }
 
     // ✅ Handle AI inconsistency (weakness vs weaknesses)
-    const weaknesses = parsed.weaknesses || parsed.weakness || [];
+    const weakness = parsed.weakness || parsed.weakness || [];
 
     // ✅ Save to Supabase
     const { error } = await supabase.from("interviews").insert([
@@ -95,8 +95,9 @@ Return response ONLY in this JSON format:
         answer,
         score: parsed.score,
         strengths: parsed.strengths,
-        weaknesses: weaknesses,
-        improvements: parsed.improvements
+        weakness: weakness,
+        improvements: parsed.improvements,
+        created_at: new Date()
       }
     ]);
 
@@ -107,7 +108,7 @@ Return response ONLY in this JSON format:
     res.json({
       score: parsed.score,
       strengths: parsed.strengths,
-      weaknesses,
+      weakness,
       improvements: parsed.improvements
     });
 
