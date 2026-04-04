@@ -18,11 +18,12 @@ const supabase = createClient(
   process.env.SUPABASE_KEY
 );
 
-// ✅ Health check
+// ===============================
+// ✅ HEALTH CHECK
+// ===============================
 app.get("/", (req, res) => {
   res.send("Backend running 🚀");
 });
-
 
 // ===============================
 // 🚀 AI EVALUATION API
@@ -30,9 +31,12 @@ app.get("/", (req, res) => {
 app.post("/api/evaluate", async (req, res) => {
   const { question, answer } = req.body;
 
-  console.log("Incoming request:", { question, answer });
+  const userId = req.headers["x-user-id"] || null;
+
+  console.log("Incoming request:", { question, answer, userId });
 
   try {
+    // 🔥 Call Groq API
     const response = await axios.post(
       "https://api.groq.com/openai/v1/chat/completions",
       {
@@ -47,7 +51,7 @@ Return response ONLY in this JSON format:
 {
   "score": number (out of 10),
   "strengths": [array of points],
-  "weakness": [array of points],
+  "weaknesses": [array of points],
   "improvements": [array of points]
 }`
           },
@@ -65,8 +69,8 @@ Return response ONLY in this JSON format:
       }
     );
 
+    // ✅ Extract AI response
     const raw = response.data.choices[0].message.content;
-
     console.log("AI raw response:", raw);
 
     // ✅ Safe JSON parsing
@@ -80,22 +84,25 @@ Return response ONLY in this JSON format:
       parsed = {
         score: 0,
         strengths: [],
-        weakness: [],
+        weaknesses: [],
         improvements: ["Failed to parse AI response"]
       };
     }
 
     // ✅ Handle AI inconsistency (weakness vs weaknesses)
-    const weakness = parsed.weakness || parsed.weakness || [];
+    const weaknesses = parsed.weaknesses || parsed.weakness || [];
 
-    // ✅ Save to Supabase
+    // ===============================
+    // 💾 SAVE TO SUPABASE
+    // ===============================
     const { error } = await supabase.from("interviews").insert([
       {
+        user_id: userId,
         question,
         answer,
         score: parsed.score,
         strengths: parsed.strengths,
-        weakness: weakness,
+        weaknesses: weaknesses,
         improvements: parsed.improvements,
         created_at: new Date()
       }
@@ -105,10 +112,11 @@ Return response ONLY in this JSON format:
       console.error("Supabase error:", error);
     }
 
+    // ✅ Send clean response
     res.json({
       score: parsed.score,
       strengths: parsed.strengths,
-      weakness,
+      weaknesses: weaknesses,
       improvements: parsed.improvements
     });
 
@@ -122,16 +130,24 @@ Return response ONLY in this JSON format:
   }
 });
 
-
 // ===============================
-// 📊 GET INTERVIEW HISTORY
+// 📊 GET INTERVIEW HISTORY (USER BASED)
 // ===============================
 app.get("/api/interviews", async (req, res) => {
+  const userId = req.headers["x-user-id"] || null;
+
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from("interviews")
       .select("*")
       .order("created_at", { ascending: false });
+
+    // ✅ Filter by user if available
+    if (userId) {
+      query = query.eq("user_id", userId);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error("Fetch error:", error);
@@ -144,7 +160,6 @@ app.get("/api/interviews", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch interviews" });
   }
 });
-
 
 // ===============================
 // 🚀 START SERVER

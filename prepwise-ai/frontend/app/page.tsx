@@ -96,7 +96,7 @@ export default function Home() {
         </div>
       </section>
       {/* CTA Section */}
-<section className="px-6 py-24 bg-gradient-to-b from-black to-gray-900 text-center">
+<section className="px-6 py-24 bg-linear-to-b from-black to-gray-900 text-center">
   <h2 className="text-4xl font-bold mb-6">
     Ready to Ace Your Next Interview?
   </h2>
