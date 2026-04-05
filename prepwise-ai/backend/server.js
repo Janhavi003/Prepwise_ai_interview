@@ -12,31 +12,25 @@ app.use(express.json());
 
 const PORT = 5000;
 
-// ✅ Supabase setup
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_KEY
 );
 
 // ===============================
-// ✅ HEALTH CHECK
+// CLEAN JSON FIX FUNCTION
 // ===============================
-app.get("/", (req, res) => {
-  res.send("Backend running 🚀");
-});
+const cleanJSON = (text) => {
+  return text.replace(/```json|```/g, "").trim();
+};
 
 // ===============================
-// 🚀 AI EVALUATION API
+// GENERATE QUESTIONS
 // ===============================
-app.post("/api/evaluate", async (req, res) => {
-  const { question, answer } = req.body;
-
-  const userId = req.headers["x-user-id"] || null;
-
-  console.log("Incoming request:", { question, answer, userId });
+app.post("/api/generate-questions", async (req, res) => {
+  const { role, level } = req.body;
 
   try {
-    // 🔥 Call Groq API
     const response = await axios.post(
       "https://api.groq.com/openai/v1/chat/completions",
       {
@@ -44,125 +38,134 @@ app.post("/api/evaluate", async (req, res) => {
         messages: [
           {
             role: "system",
-            content: `You are an expert interview evaluator.
+            content: `Generate 8-10 interview questions.
 
-Return response ONLY in this JSON format:
+Return ONLY JSON:
 
 {
-  "score": number (out of 10),
-  "strengths": [array of points],
-  "weaknesses": [array of points],
-  "improvements": [array of points]
+  "questions": ["q1", "q2", "q3"]
 }`
           },
           {
             role: "user",
-            content: `Question: ${question}\nAnswer: ${answer}`
+            content: `Role: ${role}, Level: ${level}`
           }
         ]
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-          "Content-Type": "application/json"
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`
         }
       }
     );
 
-    // ✅ Extract AI response
-    const raw = response.data.choices[0].message.content;
-    console.log("AI raw response:", raw);
+    let raw = response.data.choices[0].message.content;
 
-    // ✅ Safe JSON parsing
+    console.log("RAW:", raw);
+
+    raw = cleanJSON(raw);
+
     let parsed;
 
     try {
       parsed = JSON.parse(raw);
-    } catch (err) {
-      console.error("JSON parse failed");
-
+    } catch {
       parsed = {
-        score: 0,
-        strengths: [],
-        weaknesses: [],
-        improvements: ["Failed to parse AI response"]
+        questions: [
+          "Explain REST vs GraphQL",
+          "What is closure in JS?"
+        ]
       };
     }
 
-    // ✅ Handle AI inconsistency (weakness vs weaknesses)
-    const weaknesses = parsed.weaknesses || parsed.weakness || [];
+    res.json(parsed);
 
-    // ===============================
-    // 💾 SAVE TO SUPABASE
-    // ===============================
-    const { error } = await supabase.from("interviews").insert([
+  } catch (err) {
+    res.status(500).json({ error: "Failed to generate questions" });
+  }
+});
+
+// ===============================
+// EVALUATION
+// ===============================
+app.post("/api/evaluate", async (req, res) => {
+  const { question, answer } = req.body;
+  const userId = req.headers["x-user-id"] || null;
+
+  try {
+    const response = await axios.post(
+      "https://api.groq.com/openai/v1/chat/completions",
       {
-        user_id: userId,
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          {
+            role: "system",
+            content: `Return ONLY JSON:
+
+{
+  "score": number,
+  "strengths": [],
+  "weakness": [],
+  "improvements": []
+}`
+          },
+          {
+            role: "user",
+            content: `Q: ${question}\nA: ${answer}`
+          }
+        ]
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`
+        }
+      }
+    );
+
+    let raw = response.data.choices[0].message.content;
+    raw = cleanJSON(raw);
+
+    let parsed;
+
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = {
+        score: 0,
+        strengths: [],
+        weakness: [],
+        improvements: []
+      };
+    }
+
+    const weakness = parsed.weakness || parsed.weakness || [];
+
+    // SAVE ONLY IF COLUMN EXISTS
+    await supabase.from("interviews").insert([
+      {
+        user_id: userId || "anonymous",
         question,
         answer,
         score: parsed.score,
         strengths: parsed.strengths,
-        weaknesses: weaknesses,
+        weakness,
         improvements: parsed.improvements,
         created_at: new Date()
       }
     ]);
 
-    if (error) {
-      console.error("Supabase error:", error);
-    }
-
-    // ✅ Send clean response
     res.json({
       score: parsed.score,
       strengths: parsed.strengths,
-      weaknesses: weaknesses,
+      weakness,
       improvements: parsed.improvements
     });
 
-  } catch (error) {
-    console.error("ERROR DETAILS:");
-    console.error(error.response?.data || error.message);
-
-    res.status(500).json({
-      error: "AI evaluation failed"
-    });
-  }
-});
-
-// ===============================
-// 📊 GET INTERVIEW HISTORY (USER BASED)
-// ===============================
-app.get("/api/interviews", async (req, res) => {
-  const userId = req.headers["x-user-id"] || null;
-
-  try {
-    let query = supabase
-      .from("interviews")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    // ✅ Filter by user if available
-    if (userId) {
-      query = query.eq("user_id", userId);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error("Fetch error:", error);
-      return res.status(500).json({ error });
-    }
-
-    res.json(data);
-
   } catch (err) {
-    res.status(500).json({ error: "Failed to fetch interviews" });
+    res.status(500).json({ error: "Evaluation failed" });
   }
 });
 
-// ===============================
-// 🚀 START SERVER
 // ===============================
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
