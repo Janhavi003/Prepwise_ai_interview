@@ -90,7 +90,7 @@ Return ONLY JSON:
 // ===============================
 app.post("/api/evaluate", async (req, res) => {
   const { question, answer } = req.body;
-  const userId = req.headers["x-user-id"] || null;
+  const userId = req.headers["x-user-id"] || "anonymous";
 
   try {
     const response = await axios.post(
@@ -100,18 +100,20 @@ app.post("/api/evaluate", async (req, res) => {
         messages: [
           {
             role: "system",
-            content: `Return ONLY JSON:
+            content: `You are an interview evaluator.
+
+Return ONLY valid JSON (no markdown, no text):
 
 {
-  "score": number,
-  "strengths": [],
-  "weakness": [],
-  "improvements": []
+  "score": number (0-10),
+  "strengths": ["point"],
+  "weaknesses": ["point"],
+  "improvements": ["point"]
 }`
           },
           {
             role: "user",
-            content: `Q: ${question}\nA: ${answer}`
+            content: `Question: ${question}\nAnswer: ${answer}`
           }
         ]
       },
@@ -123,46 +125,53 @@ app.post("/api/evaluate", async (req, res) => {
     );
 
     let raw = response.data.choices[0].message.content;
-    raw = cleanJSON(raw);
+
+    // 🔥 CLEAN AI RESPONSE
+    raw = raw.replace(/```json|```/g, "").trim();
 
     let parsed;
 
     try {
       parsed = JSON.parse(raw);
-    } catch {
-      parsed = {
-        score: 0,
-        strengths: [],
-        weakness: [],
-        improvements: []
-      };
+    } catch (err) {
+      console.error("Parse failed:", raw);
+
+      parsed = {};
     }
 
-    const weakness = parsed.weakness || parsed.weakness || [];
+    // ✅ FORCE SAFE STRUCTURE
+    const safeResponse = {
+      score: parsed.score ?? 0,
+      strengths: parsed.strengths ?? [],
+      weaknesses: parsed.weaknesses ?? parsed.weakness ?? [],
+      improvements: parsed.improvements ?? []
+    };
 
-    // SAVE ONLY IF COLUMN EXISTS
+    // SAVE
     await supabase.from("interviews").insert([
       {
-        user_id: userId || "anonymous",
+        user_id: userId,
         question,
         answer,
-        score: parsed.score,
-        strengths: parsed.strengths,
-        weakness,
-        improvements: parsed.improvements,
+        score: safeResponse.score,
+        strengths: safeResponse.strengths,
+        weaknesses: safeResponse.weaknesses,
+        improvements: safeResponse.improvements,
         created_at: new Date()
       }
     ]);
 
-    res.json({
-      score: parsed.score,
-      strengths: parsed.strengths,
-      weakness,
-      improvements: parsed.improvements
-    });
+    res.json(safeResponse);
 
   } catch (err) {
-    res.status(500).json({ error: "Evaluation failed" });
+    console.error(err);
+
+    res.status(500).json({
+      score: 0,
+      strengths: [],
+      weaknesses: [],
+      improvements: ["Evaluation failed"]
+    });
   }
 });
 

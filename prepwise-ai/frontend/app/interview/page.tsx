@@ -9,19 +9,19 @@ import { supabase } from "@/lib/supabaseClient";
 
 export default function InterviewPage() {
   const [questions, setQuestions] = useState<string[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<string[]>([]);
   const [feedbacks, setFeedbacks] = useState<any[]>([]);
+  const [index, setIndex] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  const question = questions[currentIndex];
+  const question = questions[index];
 
-  // 🔥 FETCH QUESTIONS
+  // ===============================
+  // FETCH QUESTIONS
+  // ===============================
   useEffect(() => {
     const role = localStorage.getItem("role");
     const level = localStorage.getItem("level");
-
-    if (!role || !level) return;
 
     fetch("http://localhost:5000/api/generate-questions", {
       method: "POST",
@@ -38,79 +38,150 @@ export default function InterviewPage() {
       });
   }, []);
 
-  const updateAnswer = (value: string) => {
-    const newAnswers = [...answers];
-    newAnswers[currentIndex] = value;
-    setAnswers(newAnswers);
+  // ===============================
+  // UPDATE ANSWER
+  // ===============================
+  const updateAnswer = (val: string) => {
+    const copy = [...answers];
+    copy[index] = val;
+    setAnswers(copy);
   };
 
+  // ===============================
+  // SUBMIT (EVALUATION)
+  // ===============================
   const handleSubmit = async () => {
-    if (!answers[currentIndex]) return;
+    if (!answers[index]?.trim()) return;
 
     setLoading(true);
 
-    const { data: userData } = await supabase.auth.getUser();
+    try {
+      const { data: userData } = await supabase.auth.getUser();
 
-    const res = await fetch("http://localhost:5000/api/evaluate", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-user-id": userData.user?.id || ""
-      },
-      body: JSON.stringify({
-        question,
-        answer: answers[currentIndex]
-      })
-    });
+      const res = await fetch("http://localhost:5000/api/evaluate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": userData.user?.id || ""
+        },
+        body: JSON.stringify({
+          question,
+          answer: answers[index]
+        })
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    const newFeedbacks = [...feedbacks];
-    newFeedbacks[currentIndex] = data;
-    setFeedbacks(newFeedbacks);
+      // ✅ SAVE FEEDBACK
+      const copy = [...feedbacks];
+      copy[index] = data;
+      setFeedbacks(copy);
+
+    } catch (err) {
+      console.error(err);
+    }
 
     setLoading(false);
   };
 
+  // ===============================
+  // LOADING STATE
+  // ===============================
   if (!questions.length) {
-    return <p className="text-white p-10">Generating questions...</p>;
+    return (
+      <div className="text-white p-10">
+        Generating questions...
+      </div>
+    );
   }
 
+  // ===============================
+  // UI
+  // ===============================
   return (
     <main className="min-h-screen bg-black text-white pt-20">
       <Navbar />
 
       <section className="max-w-3xl mx-auto px-6 py-10 space-y-6">
 
-        <h2>
-          Question {currentIndex + 1} / {questions.length}
+        <h2 className="text-lg text-gray-400">
+          Question {index + 1} / {questions.length}
         </h2>
 
+        {/* QUESTION */}
         <Card className="p-6 bg-gray-900 border-gray-800">
           {question}
         </Card>
 
+        {/* ANSWER */}
         <Textarea
-          value={answers[currentIndex]}
+          value={answers[index]}
           onChange={(e) => updateAnswer(e.target.value)}
+          className="min-h-[150px]"
         />
 
+        {/* BUTTONS */}
         <div className="flex justify-between">
-          <Button onClick={() => setCurrentIndex(i => i - 1)} disabled={currentIndex === 0}>
-            Previous
+          <Button
+            onClick={() => setIndex(i => i - 1)}
+            disabled={index === 0}
+          >
+            Prev
           </Button>
 
-          <Button onClick={handleSubmit}>
-            {loading ? "Evaluating..." : "Submit"}
+          <Button onClick={handleSubmit} disabled={loading}>
+            {loading ? "Evaluating..." : "Submit Answer"}
           </Button>
 
           <Button
-            onClick={() => setCurrentIndex(i => i + 1)}
-            disabled={currentIndex === questions.length - 1}
+            onClick={() => setIndex(i => i + 1)}
+            disabled={index === questions.length - 1}
           >
             Next
           </Button>
         </div>
+
+        {/* ✅ FEEDBACK DISPLAY */}
+        {feedbacks[index] && (
+          <Card className="p-6 bg-gray-900 border-gray-800 space-y-4">
+
+            <h3 className="text-xl font-semibold">
+              AI Evaluation
+            </h3>
+
+            <p className="text-2xl font-bold">
+              Score: {feedbacks[index]?.score ?? 0}/10
+            </p>
+
+            <div>
+              <p className="text-green-400 font-semibold">Strengths</p>
+              <ul className="list-disc pl-5">
+                {feedbacks[index].strengths?.map((s: string, i: number) => (
+                  <li key={i}>{s}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <p className="text-red-400 font-semibold">Weaknesses</p>
+              <ul className="list-disc pl-5">
+                {feedbacks[index].weaknesses?.map((w: string, i: number) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <p className="text-blue-400 font-semibold">Improvements</p>
+              <ul className="list-disc pl-5">
+                {feedbacks[index].improvements?.map((imp: string, i: number) => (
+                  <li key={i}>{imp}</li>
+                ))}
+              </ul>
+            </div>
+
+          </Card>
+        )}
 
       </section>
     </main>
