@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 import Navbar from "@/components/navbar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,26 +34,18 @@ export default function InterviewPage() {
 
     fetch("http://localhost:5000/api/generate-questions", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: {"Content-Type": "application/json"},
       body: JSON.stringify({ role, level })
     })
       .then(res => res.json())
       .then(data => {
         const qs = data.questions || [];
-
         setQuestions(qs);
         setAnswers(Array(qs.length).fill(""));
         setFeedbacks(Array(qs.length).fill(null));
-      })
-      .catch(err => {
-        console.error("Failed to load questions", err);
       });
   }, [router]);
 
-  // ===============================
-  // UPDATE ANSWER
   // ===============================
   const updateAnswer = (val: string) => {
     const copy = [...answers];
@@ -61,66 +54,56 @@ export default function InterviewPage() {
   };
 
   // ===============================
-  // SUBMIT (EVALUATION)
-  // ===============================
   const handleSubmit = async () => {
     if (!answers[index]?.trim()) return;
 
     setLoading(true);
 
-    try {
-      const { data: userData } = await supabase.auth.getUser();
+    const { data: userData } = await supabase.auth.getUser();
 
-      const res = await fetch("http://localhost:5000/api/evaluate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-user-id": userData.user?.id || ""
-        },
-        body: JSON.stringify({
-          question,
-          answer: answers[index]
-        })
-      });
+    const res = await fetch("http://localhost:5000/api/evaluate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-id": userData.user?.id || ""
+      },
+      body: JSON.stringify({
+        question,
+        answer: answers[index]
+      })
+    });
 
-      const data = await res.json();
+    const data = await res.json();
 
-      const copy = [...feedbacks];
-      copy[index] = data;
-      setFeedbacks(copy);
-
-    } catch (err) {
-      console.error("Evaluation error:", err);
-    }
+    const copy = [...feedbacks];
+    copy[index] = data;
+    setFeedbacks(copy);
 
     setLoading(false);
   };
 
-  // ===============================
-  // FINISH INTERVIEW
-  // ===============================
   const finishInterview = () => {
-    localStorage.setItem(
-      "interview_feedbacks",
-      JSON.stringify(feedbacks)
-    );
-
+    localStorage.setItem("interview_feedbacks", JSON.stringify(feedbacks));
     router.push("/report");
   };
 
   // ===============================
-  // LOADING STATE
+  // LOADER UI
   // ===============================
   if (!questions.length) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
-        Generating questions...
+        <motion.div
+          animate={{ opacity: [0.3, 1, 0.3] }}
+          transition={{ repeat: Infinity, duration: 1.5 }}
+          className="text-lg"
+        >
+          Generating interview questions...
+        </motion.div>
       </main>
     );
   }
 
-  // ===============================
-  // UI
   // ===============================
   return (
     <main className="min-h-screen bg-black text-white pt-20">
@@ -128,21 +111,31 @@ export default function InterviewPage() {
 
       <section className="max-w-3xl mx-auto px-6 py-10 space-y-6">
 
-        {/* Question Index */}
-        <h2 className="text-gray-400">
+        <motion.h2
+          key={index}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-gray-400"
+        >
           Question {index + 1} / {questions.length}
-        </h2>
+        </motion.h2>
 
         {/* QUESTION */}
-        <Card className="p-6 bg-gray-900 border-gray-800">
-          {question}
-        </Card>
+        <motion.div
+          key={question}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <Card className="p-6 bg-gray-900 border-gray-800">
+            {question}
+          </Card>
+        </motion.div>
 
         {/* ANSWER */}
         <Textarea
           value={answers[index]}
           onChange={(e) => updateAnswer(e.target.value)}
-          className="min-h-[150px] bg-black border-gray-700 text-white"
+          className="min-h-[150px]"
         />
 
         {/* BUTTONS */}
@@ -155,7 +148,7 @@ export default function InterviewPage() {
           </Button>
 
           <Button onClick={handleSubmit} disabled={loading}>
-            {loading ? "Evaluating..." : "Submit Answer"}
+            {loading ? "Evaluating..." : "Submit"}
           </Button>
 
           <Button
@@ -167,55 +160,22 @@ export default function InterviewPage() {
               }
             }}
           >
-            {index === questions.length - 1
-              ? "Finish Interview"
-              : "Next"}
+            {index === questions.length - 1 ? "Finish" : "Next"}
           </Button>
         </div>
 
         {/* FEEDBACK */}
         {feedbacks[index] && (
-          <Card className="p-6 bg-gray-900 border-gray-800 space-y-4">
-
-            <h3 className="text-xl font-semibold">
-              AI Evaluation
-            </h3>
-
-            <p className="text-2xl font-bold">
-              Score: {feedbacks[index]?.score ?? 0}/10
-            </p>
-
-            {/* Strengths */}
-            <div>
-              <p className="text-green-400 font-semibold">Strengths</p>
-              <ul className="list-disc pl-5">
-                {feedbacks[index]?.strengths?.map((s: string, i: number) => (
-                  <li key={i}>{s}</li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Weaknesses */}
-            <div>
-              <p className="text-red-400 font-semibold">Weaknesses</p>
-              <ul className="list-disc pl-5">
-                {feedbacks[index]?.weaknesses?.map((w: string, i: number) => (
-                  <li key={i}>{w}</li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Improvements */}
-            <div>
-              <p className="text-blue-400 font-semibold">Improvements</p>
-              <ul className="list-disc pl-5">
-                {feedbacks[index]?.improvements?.map((imp: string, i: number) => (
-                  <li key={i}>{imp}</li>
-                ))}
-              </ul>
-            </div>
-
-          </Card>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+          >
+            <Card className="p-6 bg-gray-900 border-gray-800 space-y-4">
+              <p className="text-xl font-bold">
+                Score: {feedbacks[index]?.score ?? 0}/10
+              </p>
+            </Card>
+          </motion.div>
         )}
 
       </section>
