@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
@@ -10,8 +11,8 @@ export default function StartPage() {
   const [level, setLevel] = useState("");
   const router = useRouter();
 
-  const handleStart = () => {
-    if (!role || !level) return alert("Fill all fields");
+  const start = () => {
+    if (!role || !level) return;
 
     localStorage.setItem("role", role);
     localStorage.setItem("level", level);
@@ -20,28 +21,35 @@ export default function StartPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-black text-white">
-      <div className="space-y-4 w-80">
+    <main className="min-h-screen flex items-center justify-center bg-background px-6">
 
-        <h1 className="text-2xl font-bold">Start Interview</h1>
+      <Card className="w-full max-w-md p-8 space-y-6">
+
+        <div>
+          <h1 className="text-2xl font-semibold">Start Interview</h1>
+          <p className="text-muted-foreground text-sm">
+            Enter your target role and experience level
+          </p>
+        </div>
 
         <Input
-          placeholder="Job Role (e.g. Frontend Developer)"
+          placeholder="Frontend Developer"
           value={role}
           onChange={(e) => setRole(e.target.value)}
         />
 
         <Input
-          placeholder="Experience Level (Entry / Mid / Senior)"
+          placeholder="Entry / Mid / Senior"
           value={level}
           onChange={(e) => setLevel(e.target.value)}
         />
 
-        <Button onClick={handleStart} className="w-full">
+        <Button onClick={start} className="w-full">
           Start Interview
         </Button>
 
-      </div>
-    </div>
+      </Card>
+
+    </main>
   );
 }

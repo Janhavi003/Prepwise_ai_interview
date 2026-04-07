@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
 import Navbar from "@/components/navbar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,9 +19,6 @@ export default function InterviewPage() {
 
   const question = questions[index];
 
-  // ===============================
-  // FETCH QUESTIONS
-  // ===============================
   useEffect(() => {
     const role = localStorage.getItem("role");
     const level = localStorage.getItem("level");
@@ -44,16 +40,14 @@ export default function InterviewPage() {
         setAnswers(Array(qs.length).fill(""));
         setFeedbacks(Array(qs.length).fill(null));
       });
-  }, [router]);
+  }, []);
 
-  // ===============================
   const updateAnswer = (val: string) => {
     const copy = [...answers];
     copy[index] = val;
     setAnswers(copy);
   };
 
-  // ===============================
   const handleSubmit = async () => {
     if (!answers[index]?.trim()) return;
 
@@ -82,100 +76,66 @@ export default function InterviewPage() {
     setLoading(false);
   };
 
-  const finishInterview = () => {
+  const finish = () => {
     localStorage.setItem("interview_feedbacks", JSON.stringify(feedbacks));
     router.push("/report");
   };
 
-  // ===============================
-  // LOADER UI
-  // ===============================
   if (!questions.length) {
     return (
-      <main className="min-h-screen bg-black text-white flex items-center justify-center">
-        <motion.div
-          animate={{ opacity: [0.3, 1, 0.3] }}
-          transition={{ repeat: Infinity, duration: 1.5 }}
-          className="text-lg"
-        >
-          Generating interview questions...
-        </motion.div>
+      <main className="min-h-screen flex items-center justify-center">
+        <p className="text-muted-foreground">Generating questions...</p>
       </main>
     );
   }
 
-  // ===============================
+  const progress = ((index + 1) / questions.length) * 100;
+
   return (
-    <main className="min-h-screen bg-black text-white pt-20">
+    <main className="min-h-screen bg-background pt-20">
       <Navbar />
 
       <section className="max-w-3xl mx-auto px-6 py-10 space-y-6">
 
-        <motion.h2
-          key={index}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-gray-400"
-        >
-          Question {index + 1} / {questions.length}
-        </motion.h2>
+        {/* Progress */}
+        <div className="w-full bg-muted h-2 rounded-full overflow-hidden">
+          <div
+            className="bg-primary h-full transition-all"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
 
-        {/* QUESTION */}
-        <motion.div
-          key={question}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <Card className="p-6 bg-gray-900 border-gray-800">
-            {question}
-          </Card>
-        </motion.div>
+        <Card className="p-6">
+          <p className="text-sm text-muted-foreground mb-2">
+            Question {index + 1} of {questions.length}
+          </p>
+          <p>{question}</p>
+        </Card>
 
-        {/* ANSWER */}
         <Textarea
           value={answers[index]}
           onChange={(e) => updateAnswer(e.target.value)}
           className="min-h-[150px]"
         />
 
-        {/* BUTTONS */}
         <div className="flex justify-between">
-          <Button
-            onClick={() => setIndex(i => i - 1)}
-            disabled={index === 0}
-          >
+          <Button onClick={() => setIndex(i => i - 1)} disabled={index === 0}>
             Prev
           </Button>
 
           <Button onClick={handleSubmit} disabled={loading}>
-            {loading ? "Evaluating..." : "Submit"}
+            {loading ? "Evaluating..." : "Evaluate"}
           </Button>
 
-          <Button
-            onClick={() => {
-              if (index === questions.length - 1) {
-                finishInterview();
-              } else {
-                setIndex(i => i + 1);
-              }
-            }}
-          >
+          <Button onClick={() => index === questions.length - 1 ? finish() : setIndex(i => i + 1)}>
             {index === questions.length - 1 ? "Finish" : "Next"}
           </Button>
         </div>
 
-        {/* FEEDBACK */}
         {feedbacks[index] && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-          >
-            <Card className="p-6 bg-gray-900 border-gray-800 space-y-4">
-              <p className="text-xl font-bold">
-                Score: {feedbacks[index]?.score ?? 0}/10
-              </p>
-            </Card>
-          </motion.div>
+          <Card className="p-6 space-y-4">
+            <p className="font-semibold">Score: {feedbacks[index]?.score}/10</p>
+          </Card>
         )}
 
       </section>
