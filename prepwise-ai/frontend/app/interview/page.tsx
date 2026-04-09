@@ -10,6 +10,7 @@ import { LoadingSkeleton, FormSkeleton } from "@/components/loading-skeleton";
 import { KeyboardShortcuts, useKeyboardNavigation } from "@/lib/keyboard-nav.tsx";
 import { speakText } from "@/lib/speech";
 import { notify } from "@/lib/toast";
+import { getApiBaseUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { SlideUp } from "@/components/animations";
 import { Volume2, ChevronLeft, ChevronRight, CheckCircle2, Clock } from "lucide-react";
@@ -40,7 +41,7 @@ export default function InterviewPage() {
           return;
         }
 
-        const response = await fetch("http://localhost:5000/api/generate-questions", {
+        const response = await fetch(`${getApiBaseUrl()}/api/generate-questions`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ role, level }),

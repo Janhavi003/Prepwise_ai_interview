@@ -10,6 +10,7 @@ import { LoadingSkeleton, TableSkeleton } from "@/components/loading-skeleton";
 import { SlideUp, StaggerContainer, StaggerItem } from "@/components/animations";
 import { supabase } from "@/lib/supabaseClient";
 import { notify } from "@/lib/toast";
+import { getApiBaseUrl } from "@/lib/api";
 import Link from "next/link";
 import {
   BarChart3,
@@ -48,7 +49,7 @@ export default function DashboardPage() {
 
         // Fetch interviews
         try {
-          const response = await fetch("http://localhost:5000/api/interviews");
+          const response = await fetch(`${getApiBaseUrl()}/api/interviews`);
           if (response.ok) {
             const data = await response.json();
             setInterviews(data);
