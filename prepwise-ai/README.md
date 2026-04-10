@@ -43,5 +43,5 @@ Practice smarter. Speak confidently. Improve faster.
 
 ## Deployed Link
 
-Backend — https://prepwise-ai-interview-simulator.onrender.com  
+Backend — https://prepwise-bo7r.onrender.com  
 Frontend — https://prepwise-ai-interview-kohl.vercel.app/
