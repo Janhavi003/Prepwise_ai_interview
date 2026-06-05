@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -29,12 +29,23 @@ export default function LoginPage() {
     mode: "onChange",
   });
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("error") === "link_expired") {
+      notify.error("That login link has expired. Please request a new one.");
+      window.history.replaceState(null, "", "/login");
+    }
+  }, []);
+
   const onSubmit = async (data: AuthInputs) => {
     try {
       setIsLoading(true);
 
       const { error } = await supabase.auth.signInWithOtp({
         email: data.email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
       });
 
       if (error) {

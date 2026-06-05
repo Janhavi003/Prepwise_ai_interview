@@ -3,6 +3,7 @@
 import React from "react";
 import { Toaster } from "sonner";
 import { ErrorBoundary } from "./error-boundary";
+import { AuthRedirectHandler } from "./auth-redirect-handler";
 
 /**
  * App Providers - Wraps the entire app with necessary providers
@@ -10,6 +11,7 @@ import { ErrorBoundary } from "./error-boundary";
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
     <ErrorBoundary>
+      <AuthRedirectHandler />
       {children}
       <Toaster
         theme="dark"
