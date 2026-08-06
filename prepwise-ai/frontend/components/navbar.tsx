@@ -11,15 +11,18 @@ export default function Navbar() {
   return (
     <nav className="w-full fixed top-0 z-50 border-b border-border/60 bg-background/90 backdrop-blur">
       <div className="max-w-6xl mx-auto flex items-center justify-between px-4 sm:px-6 py-3">
+        {/* Logo */}
         <Link href="/" className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-md bg-primary/10 border border-primary/30 flex items-center justify-center">
             <span className="text-sm font-semibold text-primary">P</span>
           </div>
+
           <span className="text-base sm:text-lg font-semibold tracking-tight">
             PrepWise
           </span>
         </Link>
 
+        {/* Desktop Navigation */}
         <div className="hidden md:flex items-center gap-6">
           <Link
             href="/start"
@@ -27,6 +30,7 @@ export default function Navbar() {
           >
             Interview
           </Link>
+
           <Link
             href="/dashboard"
             className="text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -35,22 +39,20 @@ export default function Navbar() {
           </Link>
         </div>
 
-        <div className="hidden md:flex items-center gap-3">
-          <Link href="/login">
-            <Button variant="ghost" size="sm">
-              Login
-            </Button>
-          </Link>
+        {/* Desktop CTA */}
+        <div className="hidden md:flex items-center">
           <Link href="/start">
             <Button size="sm">Get Started</Button>
           </Link>
         </div>
 
+        {/* Mobile Menu Button */}
         <div className="md:hidden">
           <button
             onClick={() => setIsOpen(!isOpen)}
             className="p-2 rounded-md hover:bg-muted/60 transition-colors"
             aria-label="Toggle menu"
+            aria-expanded={isOpen}
           >
             {isOpen ? (
               <X className="w-5 h-5" />
@@ -61,6 +63,7 @@ export default function Navbar() {
         </div>
       </div>
 
+      {/* Mobile Navigation */}
       {isOpen && (
         <div className="md:hidden border-t border-border/60 bg-background/95 backdrop-blur">
           <div className="px-4 sm:px-6 py-4 space-y-3">
@@ -71,6 +74,7 @@ export default function Navbar() {
             >
               Interview
             </Link>
+
             <Link
               href="/dashboard"
               className="block text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -78,13 +82,13 @@ export default function Navbar() {
             >
               Dashboard
             </Link>
-            <div className="pt-4 space-y-2 border-t border-border/60">
-              <Link href="/login" className="block">
-                <Button variant="ghost" size="sm" className="w-full justify-start">
-                  Login
-                </Button>
-              </Link>
-              <Link href="/start" className="block">
+
+            <div className="pt-4 border-t border-border/60">
+              <Link
+                href="/start"
+                className="block"
+                onClick={() => setIsOpen(false)}
+              >
                 <Button size="sm" className="w-full">
                   Get Started
                 </Button>
@@ -96,3 +100,4 @@ export default function Navbar() {
     </nav>
   );
 }
+

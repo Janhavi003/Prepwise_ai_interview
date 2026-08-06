@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -8,9 +8,13 @@ import Navbar from "@/components/navbar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { LoadingSkeleton } from "@/components/loading-skeleton";
-import { SlideUp, StaggerContainer, StaggerItem } from "@/components/animations";
+import {
+  SlideUp,
+  StaggerContainer,
+  StaggerItem,
+} from "@/components/animations";
 import { notify } from "@/lib/toast";
-// import html2pdf from "html2pdf.js"; // Dynamic import to avoid SSR issues
+
 import {
   Download,
   BarChart3,
@@ -31,85 +35,450 @@ interface FeedbackItem {
 export default function ReportPage() {
   const [data, setData] = useState<FeedbackItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const reportRef = useRef<HTMLDivElement>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+
   const router = useRouter();
 
+  // ==========================================
+  // LOAD REPORT DATA
+  // ==========================================
   useEffect(() => {
     try {
       const stored = localStorage.getItem("interview_feedbacks");
+
       if (stored) {
-        setData(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+
+        if (Array.isArray(parsed)) {
+          setData(parsed);
+        } else {
+          throw new Error("Invalid feedback data");
+        }
       } else {
-        notify.info("No feedback data found. Starting new interview...");
-        setTimeout(() => router.push("/start"), 2000);
+        notify.info(
+          "No feedback data found. Starting new interview..."
+        );
+
+        setTimeout(() => {
+          router.push("/start");
+        }, 2000);
       }
     } catch (error) {
-      console.error(error);
+      console.error("Failed to load report:", error);
       notify.error("Failed to load report");
     } finally {
       setIsLoading(false);
     }
   }, [router]);
 
-  // Calculate metrics
-  const totalScore = data.reduce((acc, curr) => acc + (curr?.score || 0), 0);
-  const avgScore = data.length ? (totalScore / data.length).toFixed(1) : 0;
-  const scorePercentage = Math.round((Number(avgScore) / 10) * 100);
+  // ==========================================
+  // CALCULATE REPORT METRICS
+  // ==========================================
+  const totalScore = data.reduce(
+    (acc, curr) => acc + (curr?.score || 0),
+    0
+  );
 
-  const allStrengths = data.flatMap((item) => item?.strengths || []);
-  const allWeaknesses = data.flatMap((item) => item?.weaknesses || []);
-  const allImprovements = data.flatMap((item) => item?.improvements || []);
+  const avgScore = data.length
+    ? (totalScore / data.length).toFixed(1)
+    : "0.0";
 
-  // Download PDF
+  const scorePercentage = Math.round(
+    (Number(avgScore) / 10) * 100
+  );
+
+  const allStrengths = data.flatMap(
+    (item) => item?.strengths || []
+  );
+
+  const allWeaknesses = data.flatMap(
+    (item) => item?.weaknesses || []
+  );
+
+  const allImprovements = data.flatMap(
+    (item) => item?.improvements || []
+  );
+
+  // ==========================================
+  // DOWNLOAD PDF
+  // ==========================================
   const downloadPDF = async () => {
-    if (!reportRef.current) return;
+    if (isDownloading) return;
 
     try {
-      notify.loading("Generating PDF...");
-      const html2pdf = (await import("html2pdf.js")).default;
-      html2pdf()
-        .set({
-          margin: 10,
-          filename: "interview-report.pdf",
-          image: { type: "jpeg", quality: 0.98 },
-          html2canvas: { scale: 2 },
-          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        })
-        .from(reportRef.current)
-        .save()
-        .then(() => {
-          notify.success("PDF downloaded successfully!");
+      setIsDownloading(true);
+
+      notify.loading("Generating PDF report...");
+
+      const { jsPDF } = await import("jspdf");
+
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      const margin = 20;
+      const contentWidth = pageWidth - margin * 2;
+
+      let y = 20;
+
+      // ------------------------------------------
+      // Helpers
+      // ------------------------------------------
+      const checkPage = (requiredSpace = 20) => {
+        if (y + requiredSpace > pageHeight - 20) {
+          pdf.addPage();
+          y = 20;
+        }
+      };
+
+      const addWrappedText = (
+        text: string,
+        fontSize = 11,
+        indent = 0
+      ) => {
+        pdf.setFontSize(fontSize);
+        pdf.setFont("helvetica", "normal");
+
+        const lines = pdf.splitTextToSize(
+          text,
+          contentWidth - indent
+        );
+
+        lines.forEach((line: string) => {
+          checkPage(7);
+
+          pdf.text(line, margin + indent, y);
+
+          y += 6;
         });
+      };
+
+      const addSectionTitle = (title: string) => {
+        checkPage(20);
+
+        y += 5;
+
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(16);
+
+        pdf.text(title, margin, y);
+
+        y += 3;
+
+        pdf.setLineWidth(0.3);
+
+        pdf.line(
+          margin,
+          y,
+          pageWidth - margin,
+          y
+        );
+
+        y += 8;
+      };
+
+      const addBulletList = (items: string[]) => {
+        if (items.length === 0) {
+          addWrappedText("No items available.", 11);
+          return;
+        }
+
+        items.forEach((item) => {
+          checkPage(15);
+
+          const bullet = `• ${item}`;
+
+          const lines = pdf.splitTextToSize(
+            bullet,
+            contentWidth
+          );
+
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(11);
+
+          lines.forEach((line: string) => {
+            checkPage(7);
+
+            pdf.text(line, margin, y);
+
+            y += 6;
+          });
+
+          y += 2;
+        });
+      };
+
+      // ==========================================
+      // PDF HEADER
+      // ==========================================
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(24);
+
+      pdf.text(
+        "PrepWise",
+        pageWidth / 2,
+        y,
+        { align: "center" }
+      );
+
+      y += 10;
+
+      pdf.setFontSize(18);
+
+      pdf.text(
+        "Interview Performance Report",
+        pageWidth / 2,
+        y,
+        { align: "center" }
+      );
+
+      y += 8;
+
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(10);
+
+      pdf.text(
+        `Generated on ${new Date().toLocaleDateString()}`,
+        pageWidth / 2,
+        y,
+        { align: "center" }
+      );
+
+      y += 12;
+
+      pdf.setLineWidth(0.5);
+
+      pdf.line(
+        margin,
+        y,
+        pageWidth - margin,
+        y
+      );
+
+      y += 15;
+
+      // ==========================================
+      // PERFORMANCE SCORE
+      // ==========================================
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(16);
+
+      pdf.text(
+        "Overall Performance",
+        pageWidth / 2,
+        y,
+        { align: "center" }
+      );
+
+      y += 15;
+
+      pdf.setFontSize(32);
+
+      pdf.text(
+        `${avgScore}/10`,
+        pageWidth / 2,
+        y,
+        { align: "center" }
+      );
+
+      y += 10;
+
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(12);
+
+      pdf.text(
+        `${scorePercentage}% Performance Score`,
+        pageWidth / 2,
+        y,
+        { align: "center" }
+      );
+
+      y += 8;
+
+      pdf.setFontSize(10);
+
+      pdf.text(
+        `Based on ${data.length} interview question${
+          data.length !== 1 ? "s" : ""
+        }`,
+        pageWidth / 2,
+        y,
+        { align: "center" }
+      );
+
+      y += 15;
+
+      // ==========================================
+      // ASSESSMENT
+      // ==========================================
+      addSectionTitle("Assessment");
+
+      let assessment = "";
+
+      if (Number(avgScore) >= 8) {
+        assessment =
+          "Excellent performance. You demonstrated strong communication, technical knowledge, and problem-solving skills.";
+      } else if (Number(avgScore) >= 6) {
+        assessment =
+          "Good performance. You demonstrated solid interview skills with room for improvement in specific areas.";
+      } else {
+        assessment =
+          "Keep practicing. Focus on the improvement recommendations in this report to strengthen your interview performance.";
+      }
+
+      addWrappedText(assessment);
+
+      // ==========================================
+      // STRENGTHS
+      // ==========================================
+      addSectionTitle("Strengths");
+
+      addBulletList(allStrengths);
+
+      // ==========================================
+      // AREAS FOR IMPROVEMENT
+      // ==========================================
+      addSectionTitle("Areas for Improvement");
+
+      addBulletList(allWeaknesses);
+
+      // ==========================================
+      // RECOMMENDATIONS
+      // ==========================================
+      addSectionTitle("Actionable Recommendations");
+
+      if (allImprovements.length === 0) {
+        addWrappedText(
+          "No recommendations available."
+        );
+      } else {
+        allImprovements.forEach(
+          (improvement, index) => {
+            checkPage(15);
+
+            addWrappedText(
+              `${index + 1}. ${improvement}`
+            );
+
+            y += 2;
+          }
+        );
+      }
+
+      // ==========================================
+      // FOOTER
+      // ==========================================
+      checkPage(30);
+
+      y += 10;
+
+      pdf.line(
+        margin,
+        y,
+        pageWidth - margin,
+        y
+      );
+
+      y += 8;
+
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9);
+
+      pdf.text(
+        "Generated by PrepWise AI Interview Practice",
+        pageWidth / 2,
+        y,
+        { align: "center" }
+      );
+
+      // Add page numbers
+      const pageCount = pdf.getNumberOfPages();
+
+      for (let i = 1; i <= pageCount; i++) {
+        pdf.setPage(i);
+
+        pdf.setFontSize(8);
+
+        pdf.text(
+          `Page ${i} of ${pageCount}`,
+          pageWidth - margin,
+          pageHeight - 10,
+          {
+            align: "right",
+          }
+        );
+      }
+
+      // ==========================================
+      // SAVE
+      // ==========================================
+      pdf.save("prepwise-interview-report.pdf");
+
+      notify.success(
+        "PDF downloaded successfully!"
+      );
     } catch (error) {
-      console.error(error);
-      notify.error("Failed to download PDF");
+      console.error(
+        "PDF generation failed:",
+        error
+      );
+
+      notify.error(
+        "Failed to generate PDF report"
+      );
+    } finally {
+      setIsDownloading(false);
     }
   };
 
+  // ==========================================
+  // LOADING
+  // ==========================================
   if (isLoading) {
     return (
       <main className="min-h-screen pt-16 bg-background">
         <Navbar />
+
         <section className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-          <LoadingSkeleton count={3} variant="card" />
+          <LoadingSkeleton
+            count={3}
+            variant="card"
+          />
         </section>
       </main>
     );
   }
 
+  // ==========================================
+  // NO REPORT
+  // ==========================================
   if (data.length === 0) {
     return (
       <main className="min-h-screen pt-16 bg-background">
         <Navbar />
+
         <section className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
           <Card className="p-8 text-center space-y-4">
             <Target className="w-12 h-12 text-muted-foreground mx-auto" />
-            <h2 className="text-xl font-semibold">No Interview Data</h2>
+
+            <h2 className="text-xl font-semibold">
+              No Interview Data
+            </h2>
+
             <p className="text-muted-foreground">
-              There is no feedback to display yet. Start an interview to see your report.
+              There is no feedback to display yet.
+              Start an interview to see your report.
             </p>
+
             <Link href="/start">
-              <Button>Start New Interview</Button>
+              <Button>
+                Start New Interview
+              </Button>
             </Link>
           </Card>
         </section>
@@ -122,305 +491,446 @@ export default function ReportPage() {
       <Navbar />
 
       <section className="max-w-5xl mx-auto px-4 sm:px-6 py-10 space-y-10">
-        {/* Header */}
+
+        {/* ===================================== */}
+        {/* HEADER */}
+        {/* ===================================== */}
+
         <SlideUp>
           <div className="text-center space-y-6">
+
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20">
               <BarChart3 className="w-4 h-4 text-primary" />
-              <span className="text-sm font-medium text-primary">Performance Analysis</span>
+
+              <span className="text-sm font-medium text-primary">
+                Performance Analysis
+              </span>
             </div>
+
             <div>
-              <h1 className="text-4xl md:text-5xl font-bold mb-4 bg-linear-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+              <h1 className="text-4xl md:text-5xl font-bold mb-4">
                 Interview Report
               </h1>
+
               <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-                Comprehensive feedback and detailed analysis of your interview performance
+                Comprehensive feedback and detailed
+                analysis of your interview performance
               </p>
             </div>
+
             <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
-              <Button onClick={downloadPDF} className="gap-2 shadow-lg hover:shadow-xl transition-all">
+
+              <Button
+                onClick={downloadPDF}
+                disabled={isDownloading}
+                className="gap-2"
+              >
                 <Download className="w-4 h-4" />
-                Download Report
+
+                {isDownloading
+                  ? "Generating..."
+                  : "Download Report"}
               </Button>
+
               <Link href="/start">
-                <Button variant="outline" className="gap-2 hover:bg-primary/5 transition-all">
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                >
                   <TrendingUp className="w-4 h-4" />
                   Practice Again
                 </Button>
               </Link>
+
             </div>
           </div>
         </SlideUp>
 
-        {/* Report Content for PDF */}
-        <StaggerContainer delay={0.2} staggerDelay={0.1}>
-          <div ref={reportRef} className="space-y-8">
-            {/* Score Card */}
+        {/* ===================================== */}
+        {/* REPORT */}
+        {/* ===================================== */}
+
+        <StaggerContainer
+          delay={0.2}
+          staggerDelay={0.1}
+        >
+          <div className="space-y-8">
+
+            {/* SCORE */}
+
             <StaggerItem>
-              <motion.div className="relative overflow-hidden">
-                <Card className="p-8 space-y-8 bg-linear-to-br from-primary/5 via-background to-accent/5 border-2 border-primary/20 shadow-xl">
+              <motion.div>
+                <Card className="p-8 space-y-8 border-2 border-primary/20 shadow-xl">
+
                   <div className="text-center space-y-6">
+
                     <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20">
                       <Target className="w-4 h-4 text-primary" />
-                      <span className="text-sm font-medium text-primary">Performance Score</span>
+
+                      <span className="text-sm font-medium text-primary">
+                        Performance Score
+                      </span>
                     </div>
 
                     <motion.div
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ type: "spring", stiffness: 200, delay: 0.2 }}
-                      className="space-y-2"
+                      initial={{
+                        scale: 0.8,
+                        opacity: 0,
+                      }}
+                      animate={{
+                        scale: 1,
+                        opacity: 1,
+                      }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 200,
+                        delay: 0.2,
+                      }}
                     >
-                      <div className="text-6xl md:text-7xl font-bold bg-linear-to-r from-primary via-accent to-secondary bg-clip-text text-transparent">
+                      <div className="text-6xl md:text-7xl font-bold">
                         {avgScore}
                       </div>
-                      <p className="text-lg text-muted-foreground">out of 10</p>
+
+                      <p className="text-lg text-muted-foreground">
+                        out of 10
+                      </p>
                     </motion.div>
 
-                    <div className="text-sm text-muted-foreground">
-                      Based on {data.length} question{data.length !== 1 ? "s" : ""} answered
-                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Based on {data.length} question
+                      {data.length !== 1 ? "s" : ""} answered
+                    </p>
+
                   </div>
 
-                  {/* Progress Bar */}
+                  {/* PROGRESS */}
+
                   <div className="space-y-4">
+
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-foreground">Performance Level</span>
-                      <span className="text-sm font-bold text-primary">{scorePercentage}%</span>
+
+                      <span className="text-sm font-medium">
+                        Performance Level
+                      </span>
+
+                      <span className="text-sm font-bold text-primary">
+                        {scorePercentage}%
+                      </span>
+
                     </div>
-                    <div className="relative">
-                      <div className="w-full h-3 bg-muted/50 rounded-full overflow-hidden">
-                        <motion.div
-                          className="h-full bg-linear-to-r from-primary via-accent to-secondary rounded-full shadow-sm"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${scorePercentage}%` }}
-                          transition={{ delay: 0.4, duration: 1.2, ease: "easeOut" }}
-                        />
-                      </div>
-                      <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent rounded-full" />
+
+                    <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
+
+                      <motion.div
+                        className="h-full bg-primary rounded-full"
+                        initial={{ width: 0 }}
+                        animate={{
+                          width: `${scorePercentage}%`,
+                        }}
+                        transition={{
+                          delay: 0.4,
+                          duration: 1,
+                        }}
+                      />
+
                     </div>
+
                   </div>
 
-                  {/* Score Assessment */}
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.6 }}
-                    className="p-6 rounded-xl bg-linear-to-r from-accent/5 to-primary/5 border border-accent/20"
-                  >
+                  {/* ASSESSMENT */}
+
+                  <div className="p-6 rounded-xl bg-muted/30 border">
+
                     <div className="flex items-start gap-3">
-                      <div className="w-8 h-8 bg-accent/20 rounded-full flex items-center justify-center shrink-0 mt-0.5">
-                        <BarChart3 className="w-4 h-4 text-accent" />
-                      </div>
+
+                      <BarChart3 className="w-5 h-5 text-primary mt-1" />
+
                       <div>
-                        <p className="font-medium text-foreground mb-1">Assessment</p>
-                        <p className="text-sm text-muted-foreground leading-relaxed">
-                          {Number(avgScore) >= 8 && (
-                            "Excellent performance! You demonstrated strong communication and problem-solving skills."
-                          )}
-                          {Number(avgScore) >= 6 && Number(avgScore) < 8 && (
-                            "Good job! You showed solid skills with room for improvement in specific areas."
-                          )}
-                          {Number(avgScore) < 6 && (
-                            "Keep practicing! Focus on the improvement suggestions below to enhance your interview performance."
-                          )}
+
+                        <p className="font-semibold mb-1">
+                          Assessment
                         </p>
+
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+
+                          {Number(avgScore) >= 8 &&
+                            "Excellent performance! You demonstrated strong communication and problem-solving skills."}
+
+                          {Number(avgScore) >= 6 &&
+                            Number(avgScore) < 8 &&
+                            "Good job! You showed solid skills with room for improvement in specific areas."}
+
+                          {Number(avgScore) < 6 &&
+                            "Keep practicing! Focus on the suggestions below to improve your interview performance."}
+
+                        </p>
+
                       </div>
+
                     </div>
-                  </motion.div>
+
+                  </div>
+
                 </Card>
               </motion.div>
             </StaggerItem>
 
-            {/* Strengths */}
+            {/* ===================================== */}
+            {/* STRENGTHS */}
+            {/* ===================================== */}
+
             {allStrengths.length > 0 && (
               <StaggerItem>
-                <Card className="p-8 space-y-6 border-2 border-success/20 bg-linear-to-br from-success/5 to-transparent hover:border-success/40 transition-all duration-300">
+
+                <Card className="p-8 space-y-6 border-2 border-success/20">
+
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-success/10 rounded-xl flex items-center justify-center">
-                      <CheckCircle2 className="w-6 h-6 text-success" />
-                    </div>
+
+                    <CheckCircle2 className="w-8 h-8 text-success" />
+
                     <div>
-                      <h2 className="text-2xl font-bold text-foreground">Strengths Identified</h2>
-                      <p className="text-sm text-muted-foreground">Areas where you performed well</p>
+                      <h2 className="text-2xl font-bold">
+                        Strengths Identified
+                      </h2>
+
+                      <p className="text-sm text-muted-foreground">
+                        Areas where you performed well
+                      </p>
                     </div>
+
                   </div>
-                  <div className="space-y-4">
-                    {allStrengths.map((strength, i) => (
-                      <motion.div
-                        key={i}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.6 + i * 0.1 }}
-                        className="flex items-start gap-4 p-4 rounded-lg bg-linear-to-r from-success/5 to-success/10 border border-success/20 hover:border-success/40 transition-colors"
-                      >
-                        <div className="w-6 h-6 bg-success/20 rounded-full flex items-center justify-center shrink-0 mt-0.5">
-                          <CheckCircle2 className="w-3 h-3 text-success" />
+
+                  <div className="space-y-3">
+
+                    {allStrengths.map(
+                      (strength, i) => (
+                        <div
+                          key={i}
+                          className="flex items-start gap-3 p-4 rounded-lg bg-muted/30 border"
+                        >
+                          <CheckCircle2 className="w-4 h-4 text-success mt-1 shrink-0" />
+
+                          <p className="text-sm leading-relaxed">
+                            {strength}
+                          </p>
                         </div>
-                        <p className="text-sm leading-relaxed">{strength}</p>
-                      </motion.div>
-                    ))}
+                      )
+                    )}
+
                   </div>
+
                 </Card>
+
               </StaggerItem>
             )}
 
-            {/* Weaknesses */}
+            {/* ===================================== */}
+            {/* WEAKNESSES */}
+            {/* ===================================== */}
+
             {allWeaknesses.length > 0 && (
               <StaggerItem>
-                <Card className="p-8 space-y-6 border-2 border-destructive/20 bg-linear-to-br from-destructive/5 to-transparent hover:border-destructive/40 transition-all duration-300">
+
+                <Card className="p-8 space-y-6 border-2 border-destructive/20">
+
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-destructive/10 rounded-xl flex items-center justify-center">
-                      <AlertCircle className="w-6 h-6 text-destructive" />
-                    </div>
+
+                    <AlertCircle className="w-8 h-8 text-destructive" />
+
                     <div>
-                      <h2 className="text-2xl font-bold text-foreground">Areas for Improvement</h2>
-                      <p className="text-sm text-muted-foreground">Key focus areas to enhance your performance</p>
+                      <h2 className="text-2xl font-bold">
+                        Areas for Improvement
+                      </h2>
+
+                      <p className="text-sm text-muted-foreground">
+                        Areas that need additional focus
+                      </p>
                     </div>
+
                   </div>
-                  <div className="space-y-4">
-                    {allWeaknesses.map((weakness, i) => (
-                      <motion.div
-                        key={i}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.6 + i * 0.1 }}
-                        className="flex items-start gap-4 p-4 rounded-lg bg-linear-to-r from-destructive/5 to-destructive/10 border border-destructive/20 hover:border-destructive/40 transition-colors"
-                      >
-                        <div className="w-6 h-6 bg-destructive/20 rounded-full flex items-center justify-center shrink-0 mt-0.5">
-                          <AlertCircle className="w-3 h-3 text-destructive" />
+
+                  <div className="space-y-3">
+
+                    {allWeaknesses.map(
+                      (weakness, i) => (
+                        <div
+                          key={i}
+                          className="flex items-start gap-3 p-4 rounded-lg bg-muted/30 border"
+                        >
+                          <AlertCircle className="w-4 h-4 text-destructive mt-1 shrink-0" />
+
+                          <p className="text-sm leading-relaxed">
+                            {weakness}
+                          </p>
                         </div>
-                        <p className="text-sm leading-relaxed">{weakness}</p>
-                      </motion.div>
-                    ))}
+                      )
+                    )}
+
                   </div>
+
                 </Card>
+
               </StaggerItem>
             )}
 
-            {/* Improvements */}
+            {/* ===================================== */}
+            {/* RECOMMENDATIONS */}
+            {/* ===================================== */}
+
             {allImprovements.length > 0 && (
               <StaggerItem>
-                <Card className="p-8 space-y-4 hover:border-accent/50 transition-colors">
+
+                <Card className="p-8 space-y-6">
+
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center">
-                      <BarChart3 className="w-6 h-6 text-accent" />
-                    </div>
+
+                    <BarChart3 className="w-8 h-8 text-accent" />
+
                     <div>
-                      <h2 className="text-2xl font-bold text-foreground">Actionable Recommendations</h2>
-                      <p className="text-sm text-muted-foreground">Specific steps to improve your interview performance</p>
+                      <h2 className="text-2xl font-bold">
+                        Actionable Recommendations
+                      </h2>
+
+                      <p className="text-sm text-muted-foreground">
+                        Specific steps to improve your
+                        interview performance
+                      </p>
                     </div>
+
                   </div>
-                  <div className="space-y-4">
-                    {allImprovements.map((improvement, i) => (
-                      <motion.div
-                        key={i}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.6 + i * 0.1 }}
-                        className="flex items-start gap-4 p-4 rounded-lg bg-linear-to-r from-accent/5 to-accent/10 border border-accent/20 hover:border-accent/40 transition-colors"
-                      >
-                        <div className="w-6 h-6 bg-accent/20 rounded-full flex items-center justify-center shrink-0 mt-0.5">
-                          <span className="text-xs font-semibold text-accent">{i + 1}</span>
+
+                  <div className="space-y-3">
+
+                    {allImprovements.map(
+                      (improvement, i) => (
+                        <div
+                          key={i}
+                          className="flex items-start gap-3 p-4 rounded-lg bg-muted/30 border"
+                        >
+
+                          <div className="w-6 h-6 rounded-full bg-accent/10 flex items-center justify-center shrink-0">
+                            <span className="text-xs font-semibold">
+                              {i + 1}
+                            </span>
+                          </div>
+
+                          <p className="text-sm leading-relaxed">
+                            {improvement}
+                          </p>
+
                         </div>
-                        <p className="text-sm leading-relaxed">{improvement}</p>
-                      </motion.div>
-                    ))}
+                      )
+                    )}
+
                   </div>
+
                 </Card>
+
               </StaggerItem>
             )}
+
           </div>
         </StaggerContainer>
 
-        {/* Action Buttons */}
+        {/* ===================================== */}
+        {/* NEXT STEPS */}
+        {/* ===================================== */}
+
         <SlideUp delay={0.8}>
-          <div className="flex flex-col sm:flex-row gap-4 pt-8 border-t border-border">
-            <Link href="/start" className="flex-1">
-              <Button className="w-full gap-2">
-                <TrendingUp className="w-4 h-4" />
-                Practice Again
-              </Button>
-            </Link>
-            <Link href="/" className="flex-1">
-              <Button variant="outline" className="w-full gap-2">
-                <Home className="w-4 h-4" />
-                Back to Home
-              </Button>
-            </Link>
-          </div>
-        </SlideUp>
 
-        {/* Tips Box */}
-        <SlideUp delay={0.9}>
-          <Card className="p-8 border-l-4 border-l-primary bg-linear-to-r from-primary/5 to-transparent">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                <Target className="w-5 h-5 text-primary" />
-              </div>
-              <h3 className="text-lg font-semibold">Next Steps for Improvement</h3>
+          <Card className="p-8 space-y-5">
+
+            <div className="flex items-center gap-3">
+
+              <Target className="w-6 h-6 text-primary" />
+
+              <h3 className="text-xl font-semibold">
+                Next Steps for Improvement
+              </h3>
+
             </div>
+
             <div className="grid md:grid-cols-2 gap-4">
-              <div className="space-y-3">
-                <div className="flex items-start gap-3 p-3 rounded-lg bg-background/50 border border-border/50">
-                  <CheckCircle2 className="w-4 h-4 text-success mt-0.5 shrink-0" />
-                  <span className="text-sm">Review recommendations above to identify key improvement areas</span>
-                </div>
-                <div className="flex items-start gap-3 p-3 rounded-lg bg-background/50 border border-border/50">
-                  <TrendingUp className="w-4 h-4 text-accent mt-0.5 shrink-0" />
-                  <span className="text-sm">Practice the same role and level to track progress</span>
-                </div>
+
+              <div className="p-4 rounded-lg border bg-muted/20">
+                <CheckCircle2 className="w-4 h-4 text-success mb-2" />
+
+                <p className="text-sm">
+                  Review your recommendations and
+                  identify your key improvement areas.
+                </p>
               </div>
-              <div className="space-y-3">
-                <div className="flex items-start gap-3 p-3 rounded-lg bg-background/50 border border-border/50">
-                  <BarChart3 className="w-4 h-4 text-secondary mt-0.5 shrink-0" />
-                  <span className="text-sm">Record yourself to improve delivery and presentation</span>
-                </div>
-                <div className="flex items-start gap-3 p-3 rounded-lg bg-background/50 border border-border/50">
-                  <Download className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-                  <span className="text-sm">Download this report to share with mentors</span>
-                </div>
+
+              <div className="p-4 rounded-lg border bg-muted/20">
+                <TrendingUp className="w-4 h-4 text-accent mb-2" />
+
+                <p className="text-sm">
+                  Practice the same role and level again
+                  to track your progress.
+                </p>
               </div>
+
+              <div className="p-4 rounded-lg border bg-muted/20">
+                <BarChart3 className="w-4 h-4 text-primary mb-2" />
+
+                <p className="text-sm">
+                  Practice explaining answers clearly
+                  and support them with examples.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-lg border bg-muted/20">
+                <Download className="w-4 h-4 text-primary mb-2" />
+
+                <p className="text-sm">
+                  Download your report and review it
+                  before your next practice session.
+                </p>
+              </div>
+
             </div>
+
           </Card>
+
         </SlideUp>
 
-        {/* Action Buttons */}
-        <SlideUp delay={1.0}>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center pt-8">
-            <Link href="/start" className="flex-1 max-w-xs">
-              <Button className="w-full gap-3 h-12 text-base shadow-lg hover:shadow-xl transition-all duration-300">
+        {/* ===================================== */}
+        {/* FINAL ACTIONS */}
+        {/* ===================================== */}
+
+        <SlideUp delay={0.9}>
+
+          <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
+
+            <Link
+              href="/start"
+              className="flex-1 max-w-xs"
+            >
+              <Button className="w-full gap-3 h-12">
                 <TrendingUp className="w-5 h-5" />
                 Continue Practicing
               </Button>
             </Link>
-            <Link href="/" className="flex-1 max-w-xs">
-              <Button variant="outline" className="w-full gap-3 h-12 text-base hover:bg-primary/5 transition-all duration-300">
+
+            <Link
+              href="/"
+              className="flex-1 max-w-xs"
+            >
+              <Button
+                variant="outline"
+                className="w-full gap-3 h-12"
+              >
                 <Home className="w-5 h-5" />
                 Return Home
               </Button>
             </Link>
+
           </div>
+
         </SlideUp>
 
-        {/* Action Buttons */}
-        <SlideUp delay={1.0}>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center pt-8">
-            <Link href="/start" className="flex-1 max-w-xs">
-              <Button className="w-full gap-3 h-12 text-base shadow-lg hover:shadow-xl transition-all duration-300">
-                <TrendingUp className="w-5 h-5" />
-                Continue Practicing
-              </Button>
-            </Link>
-            <Link href="/" className="flex-1 max-w-xs">
-              <Button variant="outline" className="w-full gap-3 h-12 text-base hover:bg-primary/5 transition-all duration-300">
-                <Home className="w-5 h-5" />
-                Return Home
-              </Button>
-            </Link>
-          </div>
-        </SlideUp>
       </section>
     </main>
   );
 }
+

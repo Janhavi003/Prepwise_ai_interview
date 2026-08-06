@@ -93,31 +93,77 @@ export default function InterviewPage() {
     }
   };
 
-  const submitInterview = async () => {
-    if (answers.some((a) => !a.trim())) {
-      notify.error("Please answer all questions before submitting");
-      return;
-    }
+const submitInterview = async () => {
+  if (answers.some((a) => !a.trim())) {
+    notify.error("Please answer all questions before submitting");
+    return;
+  }
 
-    try {
-      setIsSubmitting(true);
+  try {
+    setIsSubmitting(true);
 
-      // Store answers for report
-      localStorage.setItem("interview_answers", JSON.stringify(answers));
-      localStorage.setItem("interview_questions", JSON.stringify(questions));
+    notify.loading("Evaluating your interview...");
 
-      notify.success("Interview submitted! Generating report...");
-      
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      
-      router.push("/report");
-    } catch (error) {
-      console.error(error);
-      notify.error("Failed to submit interview");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    // Save questions and answers
+    localStorage.setItem(
+      "interview_answers",
+      JSON.stringify(answers)
+    );
+
+    localStorage.setItem(
+      "interview_questions",
+      JSON.stringify(questions)
+    );
+
+    // Evaluate every question + answer
+    const feedbacks = await Promise.all(
+      questions.map(async (question, i) => {
+        const response = await fetch(
+          `${getApiBaseUrl()}/api/evaluate`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              question,
+              answer: answers[i],
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            `Failed to evaluate question ${i + 1}`
+          );
+        }
+
+        return response.json();
+      })
+    );
+
+    // Save generated AI feedback for the report page
+    localStorage.setItem(
+      "interview_feedbacks",
+      JSON.stringify(feedbacks)
+    );
+
+    notify.success("Interview evaluated successfully!");
+
+    // Open generated report
+    router.push("/report");
+  } catch (error) {
+    console.error("Interview evaluation failed:", error);
+
+    notify.error(
+      "Failed to generate interview report. Please try again."
+    );
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+
+
 
   // Keyboard navigation
   useKeyboardNavigation({
